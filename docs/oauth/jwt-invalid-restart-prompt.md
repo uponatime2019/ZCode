@@ -1,5 +1,7 @@
 # ZCode JWT 失效提示与重启
 
+> 应用已移除账号登录入口：Host 仍会清理失效凭据并广播 `zcode-jwt-invalid`，但 Renderer 不再弹窗提示或重启进入登录页；本地用户态直接收敛为未登录。以下时序保留为 Host 侧清理语义说明。
+
 当 Host 通过统一 `NodeApiClient` 检测到 ZCode JWT 请求返回 401 时，先复用 OAuth logout 清理本地凭据，再通过 Broadcast 通知 Renderer。Renderer 使用统一 AlertDialog 提示“登录已过期”，用户确认后写入一次性 restart marker 并执行 `RelaunchApp`。新 Renderer 启动时消费并删除 marker，强制以 `session-expired` 原因进入登录页。
 
 ```text

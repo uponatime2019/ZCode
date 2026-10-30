@@ -2,6 +2,8 @@
 
 ## 状态
 
+> 应用已移除账号登录入口。缓存会话恢复仍会解析 JWT `exp`，但 `reauthentication-required` 只清空本地 UI 用户态，不弹出“重新登录”提示，也不进入登录页；模型能力统一由 API Key provider 提供。以下内容保留为服务层语义与历史设计说明。
+
 - 本文定义桌面端与 Web 端在 `zcodejwttoken` 过期后的认证恢复语义。
 - `zcodejwttoken` 的签名与最终有效性仍由服务端负责；客户端只解析 JWT `exp`，用于避免恢复明显过期的本地会话。
 

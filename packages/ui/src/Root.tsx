@@ -83,7 +83,6 @@ import { useModelSelectionServiceView } from "@/hooks/useModelSelectionView.js";
 import { useRootProviderSettingsSnapshot } from "@/root/useRootProviderSettingsSnapshot.js";
 import { useWebRemoteControlAuthSync } from "@/web-remote-control/app/useWebRemoteControlAuthSync.js";
 import { useRootOAuthEffects } from "@/root/useRootOAuthEffects.js";
-import { consumeZcodeJwtInvalidRestartMarker } from "@/root/zcodeJwtInvalidRestartMarker.js";
 import { useDesktopNativeThemeSync } from "@/root/useDesktopNativeThemeSync.js";
 import { useRootPlatformEffects } from "@/root/useRootPlatformEffects.js";
 import { useRootWorkspaceActions } from "@/root/useRootWorkspaceActions.js";
@@ -130,12 +129,7 @@ import type {
 } from "@/app-shell/types.js";
 
 const DEFAULT_LUCIDE_STROKE_WIDTH = 1.5;
-type WelcomeScreenOpenReason =
-  | "startup-provider-required"
-  | "manual-login"
-  | "provider-request"
-  | "logout-provider-required"
-  | "session-expired";
+type WelcomeScreenOpenReason = "startup-provider-required";
 
 /**
  * Root —— 应用根组件
@@ -288,12 +282,9 @@ function RootInner({
     codingPlanSubscriptionService: services.codingPlanSubscriptionService,
   });
   const [welcomeScreenOpenReason, setWelcomeScreenOpenReason] =
-    useState<WelcomeScreenOpenReason | null>(() =>
-      consumeZcodeJwtInvalidRestartMarker() ? "session-expired" : null,
-    );
+    useState<WelcomeScreenOpenReason | null>(null);
   const [providerFamilyDomainMigrationComplete, setProviderFamilyDomainMigrationComplete] =
     useState(false);
-  const loginEntryRequest = useZCodeStore((state) => state.loginEntryRequest);
   const rootModelSelectionRead = useModelSelectionServiceView(services.modelSelectionService);
   const rootModelSelectionView =
     rootModelSelectionRead.state.status === "ready" ? rootModelSelectionRead.state.view : null;
@@ -681,14 +672,10 @@ function RootInner({
   const handleOpenDirectoryBrowser = useCallback(() => {
     setDirectoryBrowserOpen(true);
   }, []);
-  const handleReauthenticationRequired = useCallback(() => {
-    setWelcomeScreenOpenReason("session-expired");
-  }, []);
   const {
     setWorkspaceActionError,
     startDraftInWorkspace,
     startNewTaskFromActiveWorkspace,
-    handleLogout,
     handleSelectProject,
     handleSelectConversationWorkspace,
     handleResolveConversationWorkspace,
@@ -715,9 +702,6 @@ function RootInner({
     updateAppSettings,
     setOAuthError,
     setUser,
-    onProviderFamilyDomainClearedAfterLogout: () => {
-      setWelcomeScreenOpenReason("logout-provider-required");
-    },
     userId: user?.id,
     onOpenRemoteConnection: allowRemoteWorkspace ? handleOpenRemoteConnection : undefined,
     openRemoteProjectWorkspace: openPreparedRemoteProjectWorkspace,
@@ -1076,7 +1060,6 @@ function RootInner({
     oauthPollingActive,
     setOAuthPollingActive,
     markOAuthSuccess,
-    onReauthenticationRequired: handleReauthenticationRequired,
   });
 
   useEffect(
@@ -1238,19 +1221,6 @@ function RootInner({
     );
   }, [isSettingsTabActive, workspaceShellPath]);
 
-  useEffect(() => {
-    if (!loginEntryRequest) {
-      return;
-    }
-    // 登录入口已从模态弹窗收敛为 WelcomeScreen。
-    // provider 连接请求仍要先退出首次启动引导语义，避免连接完成后误创建默认 workspace。
-    setWelcomeScreenOpenReason("provider-request");
-  }, [loginEntryRequest]);
-
-  // 登录入口不依赖会话；保持引用稳定，避免草稿更新穿透侧栏 memo。
-  const handleOpenLoginEntry = useCallback(() => {
-    setWelcomeScreenOpenReason("manual-login");
-  }, []);
   const handleWelcomeScreenComplete = useCallback(
     async (reason: LoginCompleteReason) => {
       await refreshAppSettings();
@@ -1502,9 +1472,6 @@ function RootInner({
     onCreateTask: handleCreateTask,
     onOpenWorkspace: handleOpenWorkspace,
     allowOpenWorkspace,
-    onLogin: !user ? handleOpenLoginEntry : undefined,
-    onLogout: user ? handleLogout : undefined,
-    user,
   };
 
   if (isStartupRenderBlocked) {
@@ -1641,8 +1608,6 @@ function RootInner({
                 remoteWorkspaceSessions={remoteWorkspaceSessions}
                 allowRemoteWorkspace={allowRemoteWorkspace}
                 handleBackFromSettings={handleBackFromSettings}
-                handleLogout={user ? handleLogout : undefined}
-                onLogin={!user ? handleOpenLoginEntry : undefined}
                 user={user}
                 reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
                 remoteWorkspaceRecoveryByWorkspaceKey={remoteWorkspaceRecoveryByWorkspaceKey}

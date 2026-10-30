@@ -3,7 +3,6 @@ import { isApiKeyAccess } from "@zcode/provider";
 import { Loader2Icon, TriangleAlertIcon } from "lucide-react";
 import { BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID } from "@zcode/shared";
 import {
-  TID_LOGIN_API_KEY_CANCEL_BUTTON,
   TID_LOGIN_API_KEY_CONTINUE_BUTTON,
   TID_LOGIN_API_KEY_ERROR,
   TID_LOGIN_API_KEY_INPUT,
@@ -40,12 +39,11 @@ import {
 import { useZCodeStore } from "@/store/StoreProvider.js";
 
 interface LoginApiKeyFormProps {
-  onCancel: () => void;
   onSaved: () => void | Promise<void>;
   onSkipped: () => void | Promise<void>;
 }
 
-export function LoginApiKeyForm({ onCancel, onSaved, onSkipped }: LoginApiKeyFormProps) {
+export function LoginApiKeyForm({ onSaved, onSkipped }: LoginApiKeyFormProps) {
   const { intl, locale } = useZCodeIntl();
   const platform = usePlatform();
   const { modelSelectionService, providerSettingsService, settingService } = useServices();
@@ -256,17 +254,6 @@ export function LoginApiKeyForm({ onCancel, onSaved, onSkipped }: LoginApiKeyFor
         >
           {saving ? <Loader2Icon className="size-4 animate-spin" /> : null}
           {intl.formatMessage({ id: "login.apiKey.continue" })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 w-full text-ui-base"
-          size="lg"
-          data-testid={TID_LOGIN_API_KEY_CANCEL_BUTTON}
-          disabled={busy}
-          onClick={onCancel}
-        >
-          {intl.formatMessage({ id: "login.apiKey.cancel" })}
         </Button>
         <Button
           type="button"

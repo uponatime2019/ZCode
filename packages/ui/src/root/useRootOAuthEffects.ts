@@ -8,10 +8,8 @@ import type {
 } from "@zcode/shared";
 import {
   resolveProviderFamilyDomainFromOAuthProvider,
-  ZCODE_JWT_INVALID_BROADCAST_CHANNEL,
 } from "@zcode/shared";
 import type { IServiceAccessor } from "@zcode/services";
-import { useAlertDialog } from "@/hooks/useAlertDialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { reportAppTelemetryEvent, resolveProviderTelemetryLabel } from "@/lib/appTelemetry.js";
 import { logger } from "@/logger.js";
@@ -23,7 +21,6 @@ import {
 } from "@/root/oauthProviderFamilySelectionRefresh.js";
 import {
   applyCachedOAuthSessionRestoreResult,
-  requestOAuthReauthentication,
 } from "@/root/oauthCachedSessionRestore.js";
 import { shouldApplyOAuthPollingFailure } from "@/root/oauthLoginAttemptGuard.js";
 import { useAccountConnectionLossNotification } from "@/root/useAccountConnectionLossNotification.js";
@@ -117,7 +114,6 @@ export function useRootOAuthEffects({
   oauthPollingActive,
   setOAuthPollingActive,
   markOAuthSuccess,
-  onReauthenticationRequired,
 }: {
   accountIntentKey: string;
   platform: IPlatformService;
@@ -130,10 +126,8 @@ export function useRootOAuthEffects({
   oauthPollingActive: boolean;
   setOAuthPollingActive: (active: boolean) => void;
   markOAuthSuccess: (provider?: OAuthProviderId) => void;
-  onReauthenticationRequired: () => void;
 }) {
   useAccountConnectionLossNotification(services, accountIntentKey, refreshAppSettings);
-  const requestAlert = useAlertDialog();
   const { intl } = useZCodeIntl();
   const oauthLoginSucceededRef = useRef(false);
   const oauthLoginSuccessInFlightRef = useRef(false);
@@ -153,18 +147,9 @@ export function useRootOAuthEffects({
           return;
         }
 
-        hasRestoredUser = await applyCachedOAuthSessionRestoreResult({
+        hasRestoredUser = applyCachedOAuthSessionRestoreResult({
           result,
           setUser,
-          requestAlert,
-          onReauthenticationRequired,
-          shouldReauthenticate: async () =>
-            !disposed && (await services.oauthService.getActiveProvider()) === null,
-          copy: {
-            title: intl.formatMessage({ id: "login.expired.title" }),
-            description: intl.formatMessage({ id: "login.expired.description" }),
-            actionLabel: intl.formatMessage({ id: "login.expired.action" }),
-          },
         });
       } catch (error) {
         logger.error("[Root] 恢复 OAuth 本地登录态失败:", error);
@@ -206,48 +191,12 @@ export function useRootOAuthEffects({
     };
   }, [
     intl,
-    onReauthenticationRequired,
     refreshAppSettings,
     refreshProviderState,
-    requestAlert,
     services,
     setIsRestoringOAuthSession,
     setUser,
   ]);
-
-  useEffect(() => {
-    let disposed = false;
-    let promptPending = false;
-    const disposable = services.broadcastService.onMessage((message) => {
-      if (message.channel !== ZCODE_JWT_INVALID_BROADCAST_CHANNEL || disposed || promptPending) {
-        return;
-      }
-      promptPending = true;
-      // 业务 token 撤销后仍显示头像并要求重启会阻断恢复；与启动过期共用 Welcome 登录入口。
-      void requestOAuthReauthentication({
-        setUser,
-        requestAlert,
-        onReauthenticationRequired: () => {
-          if (!disposed) onReauthenticationRequired();
-        },
-        shouldReauthenticate: async () =>
-          !disposed && (await services.oauthService.getActiveProvider()) === null,
-        copy: {
-          title: intl.formatMessage({ id: "login.expired.title" }),
-          description: intl.formatMessage({ id: "login.expired.description" }),
-          actionLabel: intl.formatMessage({ id: "login.expired.action" }),
-        },
-      })
-        .catch((error) => logger.error("[Root] 登录失效恢复提示失败", { error }))
-        .finally(() => {
-          promptPending = false;
-        });
-    });
-    return () => {
-      disposed = true;
-      disposable.dispose();
-    };
-  }, [intl, onReauthenticationRequired, requestAlert, services.broadcastService, setUser]);
 
   useEffect(() => {
     if (!oauthPollingActive) {

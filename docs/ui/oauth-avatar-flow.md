@@ -1,20 +1,9 @@
-# OAuth 头像接入
+# OAuth 头像接入（已停用）
 
-这套实现把登录头像和用户信息一起从 provider 端传到 UI。
+应用已移除账号 / OAuth 登录 UI：侧边栏 footer 不再展示头像、用户名、套餐标识或用户 ID。
 
-## 数据流
+## 当前状态
 
-1. provider 的 `fetchUserInfo()` 读取第三方 `userinfo` 接口。
-2. provider 将头像地址写入 `OAuthUserProfile.avatarUrl`。
-3. `OAuthService` 把 `OAuthUserProfile` 转成 `UserInfo` 时保留 `avatarUrl`。
-4. `WorkspaceSidebarFooter` 使用 `AvatarImage` 渲染头像，加载失败时回退到首字母或用户图标。
-
-## 当前 provider 映射
-
-- BigModel: `userData.avatar` -> `avatarUrl`
-- ZAI: `userData.picture` -> `avatarUrl`
-
-## 约束
-
-- 旧登录态只保存用户名时，头像字段可以缺省，不影响登录恢复。
-- 新 provider 需要先确认 userinfo 响应里头像字段名，再补到 `OAuthUserProfile`。
+- `WorkspaceSidebarFooter` 只保留偏好、语言、主题、缩放、用量与升级入口，不再渲染 `AvatarImage`。
+- OAuth provider 的 `fetchUserInfo()`、`OAuthUserProfile.avatarUrl` 与 `UserInfo.avatarUrl` 数据仍由服务层保留，用于读取历史缓存会话；UI 不消费头像。
+- 新 provider 若仍需账号能力，只通过后端数据流接入，不得重新在登录页或 footer 增加账号入口。

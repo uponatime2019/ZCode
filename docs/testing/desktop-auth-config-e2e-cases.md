@@ -1,5 +1,7 @@
 # Desktop Auth/Config E2E Cases
 
+> 应用已移除账号 / OAuth 登录 UI，只保留 API Key 登录。下文 AUTH-05/AUTH-06 等 OAuth 登录失败、过期提示与重启用例仅作为历史验收记录保留，不再代表当前产品行为；相关正式 spec 需要随登录入口移除一并退役或改写。
+
 ## Todo103 G09：固定 staging 登录行为整合验收
 
 本节是整合验收范围，不覆盖或改写下文历史运行记录。
