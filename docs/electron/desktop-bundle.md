@@ -100,6 +100,19 @@ pnpm bundle:desktop -- --os mac --arch arm64 --skip-prepare --skip-build
 ZCODE_SKIP_PREPARE=1 ZCODE_SKIP_BUILD=1 pnpm bundle:desktop
 ```
 
+## 只出未打包目录
+
+需要免安装目录（例如 CI 手动打包成 zip）时加 `--dir`：该参数直传 `electron-builder --dir`，
+只产出 `<os>-unpacked` 目录，不生成安装包，因此也不做安装包体积门槛检查。
+
+```bash
+pnpm bundle:desktop -- --os win --arch x64 --dir
+```
+
+目录位置与 `resolveUnpackedDir` 一致（`win-unpacked`、`win-arm64-unpacked`、
+`mac`/`mac-arm64`、`linux-unpacked` 等），脚本结束时打印 `[bundle] unpacked-dir=<path>`。
+仓库的 `.github/workflows/build-unpacked.yml` 在手动 `workflow_dispatch` 时用它产出 zip 附件。
+
 ## 生产产物安全收口
 
 - `packages/desktop/scripts/run-production-build.mjs` 必须为 `tsup` 和 `vite build` 显式注入

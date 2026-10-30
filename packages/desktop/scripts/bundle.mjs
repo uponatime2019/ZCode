@@ -294,6 +294,7 @@ function printHelp() {
   --arch, -a <x64|arm64>       目标 CPU 架构，默认 arm64
   --skip-prepare               跳过 prepare:runtime-assets
   --skip-build                 跳过 pnpm build
+  --dir                        只产出未打包目录（win-unpacked），跳过安装包
   --dry-run                    只打印最终命令，不执行打包
   -h, --help                   查看帮助
 
@@ -319,12 +320,13 @@ function normalizeArch(rawArch) {
   return normalizedArch;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     os: process.env.ZCODE_TARGET_OS ?? null,
     arch: process.env.ZCODE_TARGET_ARCH ?? null,
     skipPrepare: process.env.ZCODE_SKIP_PREPARE === "1",
     skipBuild: process.env.ZCODE_SKIP_BUILD === "1",
+    dir: false,
     dryRun: false,
     positionals: [],
   };
@@ -353,6 +355,11 @@ function parseArgs(argv) {
 
     if (arg === "--skip-build") {
       options.skipBuild = true;
+      continue;
+    }
+
+    if (arg === "--dir") {
+      options.dir = true;
       continue;
     }
 
@@ -400,6 +407,8 @@ function parseArgs(argv) {
     arch: resolvedArch,
     skipPrepare: options.skipPrepare,
     skipBuild: options.skipBuild,
+    // dir 模式只产出未打包目录，供 CI workflow 直接压缩成 zip。
+    dir: options.dir,
     dryRun: options.dryRun,
   };
 }
@@ -640,17 +649,9 @@ async function runElectronBuilderWithRetry(args, envPatch) {
   }
 }
 
-function resolveAppAsarPath(os, arch) {
+export function resolveUnpackedDir(os, arch) {
   if (os === "mac") {
-    return resolve(
-      desktopRoot,
-      desktopDistDir,
-      arch === "arm64" ? "mac-arm64" : "mac",
-      `${desktopProductIdentity.productName}.app`,
-      "Contents",
-      "Resources",
-      "app.asar",
-    );
+    return resolve(desktopRoot, desktopDistDir, arch === "arm64" ? "mac-arm64" : "mac");
   }
 
   if (os === "win") {
@@ -658,8 +659,6 @@ function resolveAppAsarPath(os, arch) {
       desktopRoot,
       desktopDistDir,
       arch === "arm64" ? "win-arm64-unpacked" : "win-unpacked",
-      "resources",
-      "app.asar",
     );
   }
 
@@ -668,12 +667,24 @@ function resolveAppAsarPath(os, arch) {
       desktopRoot,
       desktopDistDir,
       arch === "arm64" ? "linux-arm64-unpacked" : "linux-unpacked",
-      "resources",
-      "app.asar",
     );
   }
 
   throw new Error(`不支持的目标操作系统: ${os}`);
+}
+
+function resolveAppAsarPath(os, arch) {
+  if (os === "mac") {
+    return resolve(
+      resolveUnpackedDir(os, arch),
+      `${desktopProductIdentity.productName}.app`,
+      "Contents",
+      "Resources",
+      "app.asar",
+    );
+  }
+
+  return resolve(resolveUnpackedDir(os, arch), "resources", "app.asar");
 }
 
 function verifyPackagedRuntimeDependencies(os, arch) {
@@ -740,7 +751,7 @@ function verifyPackagedRuntimeDependencies(os, arch) {
 }
 
 async function main() {
-  const { os, arch, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
+  const { os, arch, skipPrepare, skipBuild, dir, dryRun } = parseArgs(process.argv.slice(2));
   const buildArgs = [
     "exec",
     "electron-builder",
@@ -748,10 +759,12 @@ async function main() {
     "electron-builder.config.js",
     osBuilderFlagMap[os],
     archBuilderFlagMap[arch],
+    // --dir 交给 electron-builder：只生成 *-unpacked 目录，不产出安装包。
+    ...(dir ? ["--dir"] : []),
   ];
 
   console.log(`[bundle] target=${os}/${arch}`);
-  console.log(`[bundle] skipPrepare=${skipPrepare} skipBuild=${skipBuild}`);
+  console.log(`[bundle] skipPrepare=${skipPrepare} skipBuild=${skipBuild} dirOnly=${dir}`);
 
   const { buildEnv, electronBuilderEnv } = createBundleProcessEnvs({
     os,
@@ -782,6 +795,12 @@ async function main() {
   runTimedSync("bundle:verify-runtime-dependencies", () =>
     verifyPackagedRuntimeDependencies(os, arch),
   );
+
+  if (dir) {
+    // dir 模式没有安装包：体积门槛与产物发现都不适用，打印目录供 CI 压缩。
+    console.log(`[bundle] unpacked-dir=${resolveUnpackedDir(os, arch)}`);
+    return;
+  }
 
   const artifactPath = findBuiltArtifact(os, arch);
   runTimedSync("bundle:audit-bundle-size", () =>

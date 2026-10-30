@@ -1,0 +1,93 @@
+name: Build unpacked Windows app
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "Target CPU architecture"
+        required: true
+        default: x64
+        type: choice
+        options:
+          - x64
+          - arm64
+
+concurrency:
+  group: build-unpacked-${{ github.ref }}-${{ inputs.arch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # 与本地发布构建保持一致：生产身份、关闭遥测上报与自动更新、跳过代码签名。
+  ZCODE_ENV: production
+  ZCODE_ARMS_RUM_ENDPOINT: ""
+  ZCODE_TELEMETRY_REPORT_ENDPOINT: ""
+  ZCODE_AUTO_UPDATE: "0"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+jobs:
+  build:
+    name: Windows ${{ inputs.arch }} unpacked
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --dir 让 electron-builder 只产出 win-*-unpacked 目录，不生成 NSIS 安装包。
+      - name: Build unpacked app
+        run: pnpm bundle:desktop -- --os win --arch ${{ inputs.arch }} --dir
+
+      - name: Zip unpacked app
+        id: package
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $arch = "${{ inputs.arch }}"
+          $unpacked = if ($arch -eq "arm64") {
+            "packages/desktop/dist/win-arm64-unpacked"
+          } else {
+            "packages/desktop/dist/win-unpacked"
+          }
+          if (-not (Test-Path $unpacked)) {
+            throw "Missing unpacked directory: $unpacked"
+          }
+          $zip = "packages/desktop/dist/ZCode-$version-win-$arch-unpacked.zip"
+          # 压缩目录内容而不是目录本身，解压后根目录直接是 ZCode.exe。
+          Compress-Archive -Path (Join-Path $unpacked "*") -DestinationPath $zip -CompressionLevel Optimal
+          $sizeMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          @(
+            "### ZCode $version (win-$arch, unpacked)"
+            ""
+            "- Zip: ``$zip``"
+            "- Size: $sizeMb MiB"
+            "- 未生成安装包；解压后直接运行 ``ZCode.exe``。"
+          ) -join "`n" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZCode-${{ steps.package.outputs.version }}-win-${{ inputs.arch }}-unpacked
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
