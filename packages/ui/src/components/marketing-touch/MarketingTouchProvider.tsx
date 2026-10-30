@@ -75,6 +75,7 @@ export function MarketingTouchProvider({
   upgradeTargetRef.current = upgradeTargetProviderId;
   const user = useZCodeStore((state) => state.user);
   const restoring = useZCodeStore((state) => state.isRestoringOAuthSession);
+  const requestLogin = useZCodeStore((state) => state.requestLoginEntry);
   const openRewards = useOpenRewards();
   const openRewardsRef = useRef(openRewards);
   openRewardsRef.current = openRewards;
@@ -241,7 +242,7 @@ export function MarketingTouchProvider({
           }
         }
         if (!user) {
-          // 账号登录入口已移除；需要账号的营销动作直接返回取消，不再打开登录页。
+          requestLogin();
           return { status: "cancelled" };
         }
         let submitted = false;
@@ -310,6 +311,7 @@ export function MarketingTouchProvider({
     restoring,
     locale,
     intl,
+    requestLogin,
     desktop,
     openSettingsTab,
     tabStore,
