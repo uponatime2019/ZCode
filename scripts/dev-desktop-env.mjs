@@ -71,6 +71,10 @@ function run(command, args) {
           ...process.env,
           ZCODE_ENV: requestedEnv,
           ZCODE_DESKTOP_AGENT_BYTECODE: agentBytecode ? "1" : "0",
+          // React Scan 是开发期渲染检查工具，标准 dev 启动默认关闭：
+          // 关闭后不再注入右下角的 inspect 控件（含 FPS/通知角标），避免调试浮层遮挡界面。
+          // 需要时显式设置 ZCODE_REACT_SCAN=1 重新开启。
+          ZCODE_REACT_SCAN: process.env.ZCODE_REACT_SCAN ?? "0",
           ...computerUseDevEnv,
         },
         process.execPath,
