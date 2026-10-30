@@ -11,13 +11,30 @@ on:
         options:
           - x64
           - arm64
+      tag:
+        description: "Release tag (empty = v<package version>; same tag collects both arch zips)"
+        required: false
+        default: ""
+        type: string
+      draft:
+        description: "Create the release as a draft"
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark the release as a pre-release"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: build-unpacked-${{ github.ref }}-${{ inputs.arch }}
-  cancel-in-progress: true
+  # 同一 release tag 的构建串行执行，避免 x64/arm64 同时创建同一个 release 时互相冲突。
+  group: build-unpacked-${{ github.ref }}-${{ inputs.tag || 'default' }}
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  # 发布 release 并上传 zip 附件需要写权限。
+  contents: write
 
 env:
   # 与本地发布构建保持一致：生产身份、关闭遥测上报与自动更新、跳过代码签名。
@@ -72,22 +89,34 @@ jobs:
           $zip = "packages/desktop/dist/ZCode-$version-win-$arch-unpacked.zip"
           # 压缩目录内容而不是目录本身，解压后根目录直接是 ZCode.exe。
           Compress-Archive -Path (Join-Path $unpacked "*") -DestinationPath $zip -CompressionLevel Optimal
+          # 默认 tag 用 v<version>：x64/arm64 分两次跑也会补齐到同一个 release。
+          $tag = "${{ inputs.tag }}".Trim()
+          if (-not $tag) { $tag = "v$version" }
           $sizeMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
           "zip=$zip" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
           @(
             "### ZCode $version (win-$arch, unpacked)"
             ""
             "- Zip: ``$zip``"
             "- Size: $sizeMb MiB"
-            "- 未生成安装包；解压后直接运行 ``ZCode.exe``。"
+            "- Release tag: ``$tag``"
+            "- No installer; unzip and run ``ZCode.exe``."
           ) -join "`n" >> $env:GITHUB_STEP_SUMMARY
 
-      - name: Upload zip
-        uses: actions/upload-artifact@v4
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: ZCode-${{ steps.package.outputs.version }}-win-${{ inputs.arch }}-unpacked
-          path: ${{ steps.package.outputs.zip }}
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
+          tag_name: ${{ steps.package.outputs.tag }}
+          name: ZCode ${{ steps.package.outputs.version }} (Windows unpacked)
+          body: |
+            ZCode ${{ steps.package.outputs.version }} — Windows unpacked build.
+
+            - Asset: `ZCode-${{ steps.package.outputs.version }}-win-${{ inputs.arch }}-unpacked.zip`
+            - No installer is produced; unzip the archive and run `ZCode.exe`.
+            - Unsigned build; telemetry and auto-update are disabled.
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: ${{ steps.package.outputs.zip }}
+          fail_on_unmatched_files: true
