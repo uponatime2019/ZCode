@@ -111,8 +111,9 @@ pnpm bundle:desktop -- --os win --arch x64 --dir
 
 目录位置与 `resolveUnpackedDir` 一致（`win-unpacked`、`win-arm64-unpacked`、
 `mac`/`mac-arm64`、`linux-unpacked` 等），脚本结束时打印 `[bundle] unpacked-dir=<path>`。
-仓库的 `.github/workflows/build-unpacked.yml` 在手动 `workflow_dispatch` 时用它产出 zip，
-并直接作为附件发布到 GitHub Release（默认 tag 为 `v<version>`，x64/arm64 可补到同一 release）。
+仓库的 `.github/workflows/build-unpacked.yml` 在手动 `workflow_dispatch` 时支持选择 macOS
+（默认，解压后双击 `ZCode.app` 即可直接运行，无需安装）与 Windows 操作系统及 CPU 架构（arm64 / x64），
+产出免安装 zip 并直接作为附件发布到 GitHub Release（默认 tag 为 `v<version>`，多平台/多架构附件可合并发布到同一 release）。
 
 ## 生产产物安全收口
 

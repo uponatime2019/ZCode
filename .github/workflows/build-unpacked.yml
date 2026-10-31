@@ -1,18 +1,26 @@
-name: Build unpacked Windows app
+name: Build unpacked app
 
 on:
   workflow_dispatch:
     inputs:
+      os:
+        description: "Target operating system"
+        required: true
+        default: mac
+        type: choice
+        options:
+          - mac
+          - win
       arch:
         description: "Target CPU architecture"
         required: true
-        default: x64
+        default: arm64
         type: choice
         options:
-          - x64
           - arm64
+          - x64
       tag:
-        description: "Release tag (empty = v<package version>; same tag collects both arch zips)"
+        description: "Release tag (empty = v<package version>; same tag collects assets)"
         required: false
         default: ""
         type: string
@@ -28,7 +36,7 @@ on:
         type: boolean
 
 concurrency:
-  # 同一 release tag 的构建串行执行，避免 x64/arm64 同时创建同一个 release 时互相冲突。
+  # 同一 release tag 的构建串行执行，避免多架构/多系统同时创建或修改同一个 release 时互相冲突。
   group: build-unpacked-${{ github.ref }}-${{ inputs.tag || 'default' }}
   cancel-in-progress: false
 
@@ -45,8 +53,98 @@ env:
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
 jobs:
-  build:
+  build-mac:
+    name: macOS ${{ inputs.arch }} unpacked
+    if: inputs.os == 'mac'
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --dir 让 electron-builder 只产出 mac/mac-arm64/ZCode.app 目录，不生成 DMG 安装包。
+      - name: Build unpacked app
+        run: pnpm bundle:desktop -- --os mac --arch ${{ inputs.arch }} --dir
+
+      - name: Zip unpacked app
+        id: package
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          arch="${{ inputs.arch }}"
+          if [ "$arch" = "arm64" ]; then
+            unpacked="packages/desktop/dist/mac-arm64"
+          else
+            unpacked="packages/desktop/dist/mac"
+          fi
+          app_bundle="$unpacked/ZCode.app"
+          if [ ! -d "$app_bundle" ]; then
+            echo "::error::Missing unpacked application bundle: $app_bundle"
+            exit 1
+          fi
+          zip="packages/desktop/dist/ZCode-$version-mac-$arch.zip"
+          # 使用 ditto 保持 macOS 符号链接、Mach-O 执行权限与资源结构；解压后双击即可直接运行。
+          ditto -c -k --sequesterRsrc --keepParent "$app_bundle" "$zip"
+          tag="${{ inputs.tag }}"
+          tag=$(echo "$tag" | xargs)
+          if [ -z "$tag" ]; then
+            tag="v$version"
+          fi
+          size_mb=$(python3 -c "import os; print(round(os.path.getsize('$zip') / (1024 * 1024), 1))")
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ### ZCode $version (mac-$arch, unpacked)
+
+          - Zip: \`$zip\`
+          - Size: $size_mb MiB
+          - Release tag: \`$tag\`
+          - Portable bundle; unzip and double-click \`ZCode.app\` to open (no installer required).
+
+          > **macOS Note**: For unsigned builds downloaded from the web, if macOS Gatekeeper warns with
+          > *"cannot be opened because Apple cannot check it for malicious software"*,
+          > right-click \`ZCode.app\` → select **Open**, or run:
+          > \`\`\`bash
+          > xattr -cr /path/to/ZCode.app
+          > \`\`\`
+          EOF
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag }}
+          name: ZCode ${{ steps.package.outputs.version }}
+          body: |
+            ZCode ${{ steps.package.outputs.version }} — Desktop unpacked / portable build.
+
+            - Asset: `ZCode-${{ steps.package.outputs.version }}-mac-${{ inputs.arch }}.zip`
+            - Portable macOS bundle: unzip and double-click `ZCode.app` (no installation required).
+            - Unsigned build; telemetry and auto-update are disabled.
+            - If macOS Gatekeeper flags the app on first launch, right-click `ZCode.app` → Open, or run `xattr -cr ZCode.app`.
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: ${{ steps.package.outputs.zip }}
+          fail_on_unmatched_files: true
+
+  build-win:
     name: Windows ${{ inputs.arch }} unpacked
+    if: inputs.os == 'win'
     runs-on: windows-latest
     timeout-minutes: 90
 
@@ -89,7 +187,7 @@ jobs:
           $zip = "packages/desktop/dist/ZCode-$version-win-$arch-unpacked.zip"
           # 压缩目录内容而不是目录本身，解压后根目录直接是 ZCode.exe。
           Compress-Archive -Path (Join-Path $unpacked "*") -DestinationPath $zip -CompressionLevel Optimal
-          # 默认 tag 用 v<version>：x64/arm64 分两次跑也会补齐到同一个 release。
+          # 默认 tag 用 v<version>：多架构/多系统跑也会补齐到同一个 release。
           $tag = "${{ inputs.tag }}".Trim()
           if (-not $tag) { $tag = "v$version" }
           $sizeMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
@@ -109,9 +207,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.package.outputs.tag }}
-          name: ZCode ${{ steps.package.outputs.version }} (Windows unpacked)
+          name: ZCode ${{ steps.package.outputs.version }}
           body: |
-            ZCode ${{ steps.package.outputs.version }} — Windows unpacked build.
+            ZCode ${{ steps.package.outputs.version }} — Desktop unpacked / portable build.
 
             - Asset: `ZCode-${{ steps.package.outputs.version }}-win-${{ inputs.arch }}-unpacked.zip`
             - No installer is produced; unzip the archive and run `ZCode.exe`.
