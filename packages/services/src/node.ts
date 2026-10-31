@@ -1621,7 +1621,6 @@ export function createLocalServices(options: {
     | undefined;
   const providerRuntime = createProviderRuntimeFromConfigRuntime({
     configRuntime: providerConfigRuntime,
-    accountSource: accountProviderConfigSource,
     modelSelectionConfiguredDefaultSource,
     disposeModelSelectionConfiguredDefaultSource: () =>
       modelSelectionConfiguredDefaultSource.dispose(),
@@ -1716,7 +1715,10 @@ export function createLocalServices(options: {
   // 只要当前进程已经装配 Provider Runtime，就由该 Environment 自己的 Selection View
   // 决定执行就绪状态。Desktop-attached remote 也读取远端自己的 Config/Account Facts。
   const modelSelectionReadinessSource = providerRuntime.modelSelection;
-  const agentAccountProviderConfigSource = accountProviderConfigSource;
+  // 产品已移除 Z.ai / BigModel 的账号能力。Provider Runtime 使用自己的 fail-closed
+  // Account overlay；不要把遗留 source 传给 Agent，否则旧会话仍可能在 Agent 启动时
+  // 读取 OAuth 凭据并恢复 Start/Coding Plan 模型。
+  const agentAccountProviderConfigSource = undefined;
   // ===== Computer Use Helper lifecycle 层（port 自 feat）=====
   // 约束：lifecycle coordinator 懒获取 + 代际 fence（dispose 仅来自显式 workspace 生命周期）；
   // 不创建定时健康探测；Helper restart 尽可能复用 host transport，既有 Agent 的 session、

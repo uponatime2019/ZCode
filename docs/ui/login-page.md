@@ -30,7 +30,32 @@ API Key 登录表单在输入框为空时于右侧展示 `Get API Key` 外链入
 - Settings 页不再接收 `onLogin` / `onLogout` / `user`。
 - 命令面板、Web 远控、奖励与营销触达不再触发 `requestLoginEntry`；需要账号的能力在这些入口中不可用，而不是弹出登录页。
 - Model Provider 设置保留 API Key / 自定义 provider 的添加、编辑与删除；不再提供 Coding Plan 登录、重新连接或解绑等账号操作。
-- 旧账号会话仍可被服务层恢复用于数据读取，但 UI 不提供发起登录或退出的入口。
+- 账号会话不再恢复、刷新或用于任何后台数据读取。Provider Runtime 是这一规则的唯一
+  owner：它对 Built-in 配置中的历史账号 provider 发布 fail-closed overlay，因此已保存的
+  OAuth 凭据、Start Plan 选择和 Coding Plan 选择不能重新变为可执行模型。Root 不订阅
+  OAuth callback、轮询或缓存恢复。API Key / 自定义 provider 是唯一可执行的模型路径。
+- 历史账号凭据可以留在系统凭据存储中，供旧版本回滚时读取；当前版本不得读取、同步、
+  刷新或将其发送到远端。删除凭据不是启动或升级的前置条件。
+
+## Account capability removal contract
+
+```text
+persisted OAuth / Start Plan / Coding Plan state
+                    |
+                    v
+Provider Runtime fail-closed account overlay --> unavailable (no models, no network refresh)
+                    |
+                    v
+Renderer Root ignores OAuth restoration, polling, and deep-link callbacks
+                    |
+                    v
+API Key and custom-provider configuration remains available
+```
+
+The provider registry owns the unavailable projection. Renderer must not retain a second
+"logged in" or entitlement truth, and no timeout or cached entitlement may reactivate an
+account provider. This is synchronous and local: there is no replay, lease, or remote
+delivery path for account state.
 
 ## 启动直达
 
